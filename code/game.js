@@ -5,7 +5,8 @@ var actorChars = {
   "=": Lava, "|": Lava, "v": Lava, "^": Lava,
   "k": Unlock,
   "s": Stomper,
-  "t": Trigger
+  "t": Trigger,
+  "g": Goblet
 };
 
 function Level(plan) {
@@ -42,10 +43,13 @@ function Level(plan) {
       else if (ch == "!")
         fieldType = "lava";
 
-      else if (ch == "f")
-        fieldType = "floater";
-
-
+       if (!passable)
+       {
+         if (ch == "f")
+         {
+           fieldType = "floater";
+         }
+       }
 
       // "Push" the fieldType, which is a string, onto the gridLine array (at the end).
       gridLine.push(fieldType);
@@ -99,7 +103,7 @@ Coin.prototype.type = "coin";
 
 //added functions
 function Unlock(pos) {
-  this.basePos = this.pos = pos.plus(new Vector(0.3, 0.2));
+  this.basePos = this.pos = pos.plus(new Vector(0, 0));
   this.size = new Vector(1, 2);
   // Make it go back and forth in a sine wave.
  //  this.wobble = Math.random() * Math.PI * 2;
@@ -109,18 +113,24 @@ Unlock.prototype.type = "unlock";
 function Stomper(pos, ch) {
   this.basePos = this.pos = pos.plus(new Vector(.25, .25));
   this.size = new Vector (1.5, 2);
-  this.speed = new Vector(0, 8);
-  
+  this.speed = new Vector(0, 0);
+
 //  this.repeatPos = pos;
   //this.backUp =
 }
 Stomper.prototype.type = "stomper";
 
 function Trigger(pos){
-  this.pos = pos;
-  this.size = new Vector (1, 10);
+  this.basePos = this.pos = pos.plus(new Vector(.25, -5));
+  this.size = new Vector (.4, 10);
 }
 Trigger.prototype.type = "trigger";
+
+function Goblet(pos){
+  this.pos = pos;
+  this.size = new Vector (1, 1.5);
+}
+Goblet.prototype.type = "goblet";
 
 // Lava is initialized based on the character, but otherwise has a
 // size and position
@@ -132,14 +142,14 @@ function Lava(pos, ch) {
     this.speed = new Vector(2, 0);
   } else if (ch == "|") {
     // Vertical lava
-    this.speed = new Vector(0, 2);
+    this.speed = new Vector(0, 4);
   } else if (ch == "v") {
     // Drip lava. Repeat back to this pos.
     this.speed = new Vector(0, 3);
     this.repeatPos = pos;
   } else if (ch == "^") {
     //Jumping lava!
-    this.speed = new Vector(0, -3);
+    this.speed = new Vector(0, -5);
   //  this.finishDelay = 1; //dunno? Apparently this was making 1 coin pick up an instant win? idk why
     this.repeatPos = pos;
   }
@@ -271,6 +281,7 @@ Level.prototype.obstacleAt = function(pos, size) {
     for (var x = xStart; x < xEnd; x++) {
       var fieldType = this.grid[y][x];
       if (fieldType) return fieldType;
+
     }
   }
 };
@@ -325,12 +336,14 @@ Lava.prototype.act = function(step, level) {
 
 //how it moves
  Stomper.prototype.act = function(step, level) {
-  var theSpeed = -1;
+  //var theSpeed = -1;
   var newPos = this.pos.plus(this.speed.times(step));
   if (!level.obstacleAt(newPos, this.size))
     this.pos = newPos;
-  else
-      this.speed = this.speed.times(theSpeed);
+  if (stompTrigger)
+  this.speed = new Vector (0, 6);
+  if (level.obstacleAt(newPos, this.size) && stompTrigger == false)
+  this.speed = new Vector (0, -3);
 
 
 };
@@ -349,11 +362,20 @@ Coin.prototype.act = function(step) {
 Unlock.prototype.act = function(step){
 };
 
+var passable;
+var stompTrigger;
+var doorOpened;
+//var stompGrounded;
+//var squashed;
+
 Trigger.prototype.act = function(step){
 };
 
+Goblet.prototype.act = function(step){
+};
 
-var playerXSpeed = 7;
+
+var playerXSpeed = 7.5;
 
 Player.prototype.moveX = function(step, level, keys) {
   this.speed.x = 0;
@@ -365,6 +387,11 @@ Player.prototype.moveX = function(step, level, keys) {
   var newPos = this.pos.plus(motion);
   // Find if there's an obstacle there
   var obstacle = level.obstacleAt(newPos, this.size);
+
+  if (obstacle == "floater")
+   console.log ("this is a door");
+
+
   // Handle lava by calling playerTouched
   if (obstacle)
     level.playerTouched(obstacle);
@@ -418,33 +445,54 @@ Level.prototype.playerTouched = function(type, actor) {
 
   // if the player touches lava and the player hasn't won
   // Player loses
-  if (type == "lava" && this.status == null) {
+    if (type == "lava" && this.status == null) {
     this.status = "lost";
     this.finishDelay = 1;
 
-  } else if (type == "stomper") { //does this need to be Null? i dont get it :v
+  } if (type == "stomper") { //does this need to be Null? i dont get it :v
+    console.log ("squshed");
     this.status = "squished";
     this.finishDelay = 1; //hiding this finishDelay made the stomper not kill me for some reason
 
-  } else if (type == "trigger" ) {
-     console.log ("touch");
+  } if (type == "unlock" ) {
+      this.actors = this.actors.filter(function(other){
+        return other != actor;
+        passable = true;
+      });
 
-  } else if (type == "unlock" ) {
+  } if (type == "coin") {
+    this.actors = this.actors.filter(function(other) {
+      return other != actor;
+    });
+  }
+
+    if (type == "goblet"){
       this.actors = this.actors.filter(function(other){
         return other != actor;
       });
 
-  } else if (type == "coin") {
-    this.actors = this.actors.filter(function(other) {
-      return other != actor;
-    });
-    // If there aren't any coins left, player wins
+    // If there aren't any coins (changed to goblet) left, player wins
     if (!this.actors.some(function(actor) {
-           return actor.type == "coin";
+           return actor.type == "goblet";
          })) {
       this.status = "won";
       this.finishDelay = 1;
     }
+  }
+
+  if (type != "trigger" && stompTrigger == true){
+    stompTrigger = false;
+    console.log ("nottouching");
+  }
+
+  if (type == "trigger") {
+    if (type == "stomper")
+    {
+      console.log ("squished now");
+    }
+    stompTrigger = true;
+     console.log ("touch");
+
   }
 };
 
